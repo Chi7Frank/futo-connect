@@ -27,12 +27,13 @@ db.exec(`
 
 // Seed initial data if empty
 const count = db.prepare("SELECT count(*) as count FROM announcements").get() as { count: number };
+
 if (count.count === 0) {
   const insert = db.prepare(`
     INSERT INTO announcements (id, title, description, category, tag, time, isUrgent, isRead, isSaved)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  
+
   insert.run('1', 'Rescheduling of GST 101 Exams', 'All students of the Federal University of Technology, Owerri are hereby informed that the GST 101 examinations scheduled for Friday...', 'Urgent', 'EXAMS', '2 hours ago', 1, 0, 0);
   insert.run('2', 'Inter-Faculty Football Championship 2024', 'The Directorate of Sports is pleased to announce the kick-off of the annual Inter-faculty football tournament. Registration for teams...', 'General', 'SPORTS', '5 hours ago', 0, 0, 0);
   insert.run('3', 'Release of 2022/2023 Harmattan Results', 'The Senate has approved the release of results for the 2022/2023 Harmattan semester. Students can now check their portals...', 'Academic', 'RESULTS', 'Yesterday', 0, 1, 1);
@@ -41,33 +42,41 @@ if (count.count === 0) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+
+  // ✅ IMPORTANT: Use Render's assigned port
+  const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
   app.use(express.json());
 
+  // =====================
   // API Routes
+  // =====================
+
   app.get("/api/announcements", (req, res) => {
     const announcements = db.prepare("SELECT * FROM announcements ORDER BY createdAt DESC").all();
-    res.json(announcements.map((a: any) => ({
-      ...a,
-      isUrgent: Boolean(a.isUrgent),
-      isRead: Boolean(a.isRead),
-      isSaved: Boolean(a.isSaved)
-    })));
+    res.json(
+      announcements.map((a: any) => ({
+        ...a,
+        isUrgent: Boolean(a.isUrgent),
+        isRead: Boolean(a.isRead),
+        isSaved: Boolean(a.isSaved),
+      }))
+    );
   });
 
   app.post("/api/announcements", (req, res) => {
     const { title, description, category, tag, isUrgent } = req.body;
-    const id = Math.random().toString(36).substr(2, 9);
+    const id = Math.random().toString(36).substring(2, 9);
     const time = "Just now";
-    
+
     try {
       const insert = db.prepare(`
         INSERT INTO announcements (id, title, description, category, tag, time, isUrgent, isRead, isSaved)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
+
       insert.run(id, title, description, category, tag, time, isUrgent ? 1 : 0, 0, 0);
-      
+
       const newAnnouncement = db.prepare("SELECT * FROM announcements WHERE id = ?").get(id);
       res.status(201).json(newAnnouncement);
     } catch (error) {
@@ -78,15 +87,16 @@ async function startServer() {
   app.patch("/api/announcements/:id", (req, res) => {
     const { id } = req.params;
     const { title, description, category, tag, isUrgent } = req.body;
-    
+
     try {
       db.prepare(`
         UPDATE announcements 
         SET title = ?, description = ?, category = ?, tag = ?, isUrgent = ?
         WHERE id = ?
       `).run(title, description, category, tag, isUrgent ? 1 : 0, id);
+
       res.status(200).send();
-    } catch (error) {
+    } catch {
       res.status(500).json({ error: "Failed to update announcement" });
     }
   });
@@ -106,6 +116,7 @@ async function startServer() {
   app.patch("/api/announcements/:id/toggle-save", (req, res) => {
     const { id } = req.params;
     const announcement = db.prepare("SELECT isSaved FROM announcements WHERE id = ?").get(id) as any;
+
     if (announcement) {
       const newValue = announcement.isSaved ? 0 : 1;
       db.prepare("UPDATE announcements SET isSaved = ? WHERE id = ?").run(newValue, id);
@@ -115,22 +126,29 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
+  // =====================
+  // Frontend Handling
+  // =====================
+
   if (process.env.NODE_ENV !== "production") {
+    // Dev mode → Vite middleware
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
+
     app.use(vite.middlewares);
   } else {
+    // Production → Serve built frontend
     app.use(express.static(path.join(__dirname, "dist")));
+
     app.get("*", (req, res) => {
       res.sendFile(path.join(__dirname, "dist", "index.html"));
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
   });
 }
 
